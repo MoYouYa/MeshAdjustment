@@ -144,6 +144,8 @@ bool saveObjFile(Mesh& mesh, std::string filePath);
 bool MeshSubdivision(Mesh& mesh,std::string filePath, SubFunction subFunction);
 void creatNewVertices_LoopSubdivision(std::vector<std::unordered_set<unsigned int>> sides, Mesh& mesh);
 void adjustOldVertices_LoopSubdivision(int oldPointNum, Mesh& mesh);
+void creatNewVertices_Catmull_ClarkSubdivision(std::vector<std::unordered_set<unsigned int>> sides, Mesh& mesh);
+void adjustOldVertices_Catmull_ClarkSubdivision(int oldPointNum, Mesh& mesh);
 
 std::vector<std::string> splitStr(std::string& s, char splitChar) {
 	std::vector<std::string> res;
@@ -247,6 +249,23 @@ bool loadObjFile(std::string filePath,Mesh& mesh,LoadType loadType) {
 					case LoadType::General:
 					{
 						// 
+						for (int i = 0; i < strs.size() - 1; i++) {
+							posIndices.emplace_back(std::stoi(splitStr(strs[1 + i], '/')[0]) - 1);
+							//posIndices.emplace_back(std::stoi(splitStr(strs[2 + i], '/')[0]) - 1);
+							//posIndices.emplace_back(std::stoi(splitStr(strs[3 + i], '/')[0]) - 1);
+
+							if (!tCoords.empty()) {
+								texIndices.emplace_back(std::stoi(splitStr(strs[1+i], '/')[1]) - 1);
+								//texIndices.emplace_back(std::stoi(splitStr(strs[2 + i], '/')[1]) - 1);
+								//texIndices.emplace_back(std::stoi(splitStr(strs[3 + i], '/')[1]) - 1);
+							}
+							if (!tCoords.empty() && !normals.empty()) {
+								norIndices.emplace_back(std::stoi(splitStr(strs[1+i], '/')[2]) - 1);
+								//norIndices.emplace_back(std::stoi(splitStr(strs[2 + i], '/')[2]) - 1);
+								//norIndices.emplace_back(std::stoi(splitStr(strs[3 + i], '/')[2]) - 1);
+							}
+						}
+						facePointNums.emplace_back(strs.size()-1);
 					}break;
 				}
 			}
@@ -285,7 +304,7 @@ bool saveObjFile(Mesh& mesh,std::string filePath) {
 		//	}
 		//}
 		unsigned int offset = 0;
-		for (int i = 0; i < mesh.posIndices.size()&&offset<mesh.facePointNums.size(); i+=mesh.facePointNums[offset-1]) {
+		for (int i = 0; i < mesh.posIndices.size()&&offset<mesh.facePointNums.size(); i+=mesh.facePointNums[offset],offset++){
 			//if (!mesh.textureCoordinates.empty() && !mesh.normals.empty()) {
 			//	file << "f " << mesh.posIndices[i+0] << "/" << mesh.texIndices[i + 0] << "/" << mesh.norIndices[i+0] << " " 
 			//		<< mesh.posIndices[i + 1] << "/" << mesh.texIndices[i + 1] << "/" << mesh.norIndices[i + 1] << " " 
@@ -306,7 +325,6 @@ bool saveObjFile(Mesh& mesh,std::string filePath) {
 				file << " " << mesh.posIndices[i + j] + 1;
 			}
 			file << "\n";
-			offset++;
 		}
 	}
 	catch (std::exception e) {
@@ -317,28 +335,25 @@ bool saveObjFile(Mesh& mesh,std::string filePath) {
 }
 
 bool MeshSubdivision(Mesh& mesh,std::string filePath,SubFunction subFunction) {
+	int oldPointNum = mesh.positions.size();
+	std::vector<std::unordered_set<unsigned int>> sides(oldPointNum);
+	for (int i = 0,offset=0; i < mesh.posIndices.size()&&offset<mesh.facePointNums.size(); i+=mesh.facePointNums[offset],offset++) {
+		for (int j = 0; j < mesh.facePointNums[offset];j++) {
+			sides[mesh.posIndices[i + j]].insert(mesh.posIndices[i + (j < mesh.facePointNums[offset] - 1 ? j + 1 : 0)]);
+			sides[mesh.posIndices[i + j]].insert(mesh.posIndices[i + (j > 0 ? j - 1 : mesh.facePointNums[offset] - 1)]);
+		}
+	}
 	switch (subFunction) {
 		case SubFunction::Loop_Subdivision:
 		{
-			int oldPointNum = mesh.positions.size();
-			std::vector<std::unordered_set<unsigned int>> sides(oldPointNum);
-			for (int i = 0; i < mesh.posIndices.size(); i+=3) {
-				sides[mesh.posIndices[i + 0]].insert(mesh.posIndices[i + 1]);
-				sides[mesh.posIndices[i + 0]].insert(mesh.posIndices[i + 2]);
-
-				sides[mesh.posIndices[i + 1]].insert(mesh.posIndices[i + 0]);
-				sides[mesh.posIndices[i + 1]].insert(mesh.posIndices[i + 2]);
-
-				sides[mesh.posIndices[i + 2]].insert(mesh.posIndices[i + 0]);
-				sides[mesh.posIndices[i + 2]].insert(mesh.posIndices[i + 1]);
-			}
 			creatNewVertices_LoopSubdivision(sides, mesh);
 			adjustOldVertices_LoopSubdivision(oldPointNum, mesh);
 
 		}break;
 		case SubFunction::Catmull_Clark_Subdivision:
 		{
-
+			creatNewVertices_Catmull_ClarkSubdivision(sides, mesh);
+			adjustOldVertices_Catmull_ClarkSubdivision(oldPointNum, mesh);
 		}break;
 	}
 		
@@ -436,6 +451,113 @@ void adjustOldVertices_LoopSubdivision(int oldPointNum, Mesh& mesh) {
 		mesh.positions[i] *= (float)(1 - u * n);
 		for (auto j : sides[i]) {
 			mesh.positions[i] += mesh.positions[j] * u;
+		}
+	}
+}
+
+void creatNewVertices_Catmull_ClarkSubdivision(std::vector<std::unordered_set<unsigned int>> sides, Mesh& mesh) {
+	std::vector<unsigned int> newPosIndices;
+	std::vector<std::unordered_map<unsigned int, unsigned int>> midPointInices(sides.size());
+	for (int i = 0; i < sides.size(); i++) {
+		for (auto j : sides[i]) {
+			if (i < j) {
+				Vector3f center1(0,0,0), center2(0,0,0);
+				int pCount = 0;
+				for (int k = 0,offset=0; k < mesh.posIndices.size() && pCount < 2 && offset<mesh.facePointNums.size(); k += mesh.facePointNums[offset],offset++) {
+					int same =0;
+					for (int z = 0; z < mesh.facePointNums[offset]; z++) {
+						if (i == mesh.posIndices[k + z] || j == mesh.posIndices[k + z]) {
+							same++;
+							if (same == 2) {
+								break;
+							}
+						}
+					}
+					if (same == 2) {
+						if (pCount == 0) {
+							for (int p = 0; p < mesh.facePointNums[offset]; p++) {
+								center1 += mesh.positions[mesh.posIndices[k + p]] / mesh.facePointNums[offset];
+							}
+							pCount++;
+						}
+						else if (pCount == 1) {
+							for (int p = 0; p < mesh.facePointNums[offset]; p++) {
+								center2 += mesh.positions[mesh.posIndices[k + p]] / mesh.facePointNums[offset];
+							}
+							pCount++;
+						}
+					}
+					if (pCount == 2) {
+						break;
+					}
+				}
+				if (pCount == 2) {
+					Vector3f newPoint = mesh.positions[i] / 4.0f + mesh.positions[j] / 4.0f
+						+ center1 / 4.0f + center2 / 4.0f;
+					mesh.positions.emplace_back(newPoint);
+					midPointInices[i].insert({ j,mesh.positions.size() - 1 });
+				}
+			}
+		}
+	}
+	for (int i = 0,offset=0; i < mesh.posIndices.size()&&offset<mesh.facePointNums.size(); i += mesh.facePointNums[offset],offset++) {
+		Vector3f center(0,0,0);
+		unsigned int centerIndex;
+		for (int j = 0; j < mesh.facePointNums[offset]; j++) {
+			center += mesh.positions[mesh.posIndices[i + j]] / mesh.facePointNums[offset];
+		}
+		mesh.positions.emplace_back(center);
+		centerIndex = mesh.positions.size() - 1;
+		for (int j = 0; j < mesh.facePointNums[offset]; j++) {
+			unsigned int mid = mesh.posIndices[i + j];
+			unsigned int right = mesh.posIndices[i + (j + 1) % mesh.facePointNums[offset]];
+			unsigned int left = mesh.posIndices[i + (j + mesh.facePointNums[offset] - 1) % mesh.facePointNums[offset]];
+			newPosIndices.emplace_back(mid);
+			newPosIndices.emplace_back(midPointInices[mid < right ? mid : right][right > mid ? right : mid]);
+			newPosIndices.emplace_back(centerIndex);
+			newPosIndices.emplace_back(midPointInices[mid < left ? mid : left][left > mid ? left : mid]);
+		}
+	}
+	std::vector<unsigned int> newFacePointNums(newPosIndices.size() / 4, 4);
+	mesh.posIndices = move(newPosIndices);
+	mesh.facePointNums = move(newFacePointNums);
+}
+
+void adjustOldVertices_Catmull_ClarkSubdivision(int oldPointNum, Mesh& mesh) {
+	std::vector<std::unordered_set<unsigned int>> sides(oldPointNum);
+	for (int i = 0, offset = 0; i < mesh.posIndices.size() && offset < mesh.facePointNums.size(); i += mesh.facePointNums[offset], offset++) {
+		for (int j = 0; j < mesh.facePointNums[offset]; j++) {
+			if (mesh.posIndices[i + j] < oldPointNum) {
+				sides[mesh.posIndices[i + j]].insert(mesh.posIndices[i + (j < mesh.facePointNums[offset] - 1 ? j + 1 : 0)]);
+				sides[mesh.posIndices[i + j]].insert(mesh.posIndices[i + (j > 0 ? j - 1 : mesh.facePointNums[offset] - 1)]);
+			}
+		}
+	}
+	for (int i = 0; i < oldPointNum; i++) {
+		unsigned int degree = sides[i].size();
+		mesh.positions[i] /= 4.0f;
+		for (auto j : sides[i]) {
+			mesh.positions[i] += (mesh.positions[j] * 2.0f / degree / 4.0f);
+		}
+		int pCount = 0;
+		for (int k = 0, offset = 0; k < mesh.posIndices.size() && offset < mesh.facePointNums.size(); k += mesh.facePointNums[offset], offset++) {
+			unsigned int same = 0;
+			unsigned int index;
+			for (int z = 0; z < mesh.facePointNums[offset]; z++) {
+				if (sides[i].find(mesh.posIndices[k + z]) != sides[i].end()) {
+					same++;
+				}
+				else {
+					index = mesh.posIndices[k + z];
+				}
+			}
+			if (same == 2) {
+				mesh.positions[i] += (mesh.positions[index] / degree / 4.0f);
+				pCount++;
+				if (pCount >= degree) {
+					break;
+				}
+			}
 		}
 	}
 }
