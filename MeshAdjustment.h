@@ -6,6 +6,7 @@
 #include <iostream>
 #include <unordered_set>
 #include <unordered_map>
+#include <functional>
 
 enum LoadType {
 	Trangle,
@@ -62,6 +63,10 @@ public:
 		this->y /= n;
 		return *this;
 	}
+
+	bool operator==(Vector2f v2) {
+		return abs(x - v2.x) <= 1e-5 && abs(y - v2.y) <= 1e-5;
+	}
 };
 
 class Vector3f {
@@ -114,6 +119,10 @@ public:
 		this->z /= n;
 		return *this;
 	}
+
+	bool operator==(Vector3f v3) {
+		return abs(x - v3.x) <= 1e-5 && abs(y - v3.y) <= 1e-5 && abs(z - v3.z) <= 1e-5;
+	}
 };
 
 class Mesh {
@@ -137,15 +146,91 @@ public:
 		texIndices = _texIndices;
 		norIndices = _norIndices;
 	}
+
+	inline bool hasTextureCoords() { return texIndices.size() > 0; }
+
+	inline bool hasNormals() { return norIndices.size() > 0; }
+
+	bool isTriangulated() {
+		for (int i = 0; i < facePointNums.size(); i++) {
+			if (facePointNums[i] != 3) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	void triangulateFace() {
+		if (!isTriangulated()) {
+			std::vector<unsigned int> newFacePointNums;
+			std::vector<unsigned int> newPosIndices;
+			std::vector<unsigned int> newTexIndices;
+			std::vector<unsigned int> newNorIndices;
+			for (int i = 0, j = 0; i < facePointNums.size(); i++) {
+				if (facePointNums[i] == 3) {
+					newPosIndices.emplace_back(posIndices[j]);
+					newTexIndices.emplace_back(texIndices[j]);
+					newNorIndices.emplace_back(norIndices[j]);
+					newPosIndices.emplace_back(posIndices[j+1]);
+					newTexIndices.emplace_back(texIndices[j+1]);
+					newNorIndices.emplace_back(norIndices[j+1]);
+					newPosIndices.emplace_back(posIndices[j+2]);
+					newTexIndices.emplace_back(texIndices[j+2]);
+					newNorIndices.emplace_back(norIndices[j+2]);
+					newFacePointNums.emplace_back(3);
+					j += 3;
+				}
+				else {
+					for (int k = 0; k+2 < facePointNums[i]; k++) {
+						newPosIndices.emplace_back(posIndices[j+k]);
+						newTexIndices.emplace_back(texIndices[j+k]);
+						newNorIndices.emplace_back(norIndices[j+k]);
+						newPosIndices.emplace_back(posIndices[j + k+1]);
+						newTexIndices.emplace_back(texIndices[j + k+1]);
+						newNorIndices.emplace_back(norIndices[j + k+1]);
+						newPosIndices.emplace_back(posIndices[j + k+2]);
+						newTexIndices.emplace_back(texIndices[j + k+2]);
+						newNorIndices.emplace_back(norIndices[j + k+2]);
+						newFacePointNums.emplace_back(3);
+					}
+					j += facePointNums[i];
+				}
+			}
+			facePointNums = move(newFacePointNums);
+			posIndices = move(newPosIndices);
+			texIndices = move(newTexIndices);
+			norIndices = move(newNorIndices);
+		}
+	}
 };
+
+Vector3f& normalizeVector(Vector3f& v3);
+Vector2f& normalizeVector(Vector2f& v2);
 std::vector<std::string> splitStr(std::string& s, char splitChar=' ');
-bool loadObjFile(std::string filePath,Mesh& mesh,LoadType loadType);
+bool loadObjFile(std::string filePath,Mesh& mesh);
 bool saveObjFile(Mesh& mesh, std::string filePath);
-bool MeshSubdivision(Mesh& mesh,std::string filePath, SubFunction subFunction);
+bool MeshSubdivision(Mesh& mesh,SubFunction subFunction);
 void creatNewVertices_LoopSubdivision(std::vector<std::unordered_set<unsigned int>> sides, Mesh& mesh);
 void adjustOldVertices_LoopSubdivision(int oldPointNum, Mesh& mesh);
 void creatNewVertices_Catmull_ClarkSubdivision(std::vector<std::unordered_set<unsigned int>> sides, Mesh& mesh);
 void adjustOldVertices_Catmull_ClarkSubdivision(int oldPointNum, Mesh& mesh);
+
+Vector3f& normalizeVector(Vector3f& v3) {
+	float len = v3.x * v3.x + v3.y * v3.y + v3.z * v3.z;
+	len = sqrtf(len);
+	v3.x /= len;
+	v3.y /= len;
+	v3.z /= len;
+	return v3;
+}
+
+Vector2f& normalizeVector(Vector2f& v2) {
+	float len = v2.x * v2.x + v2.y * v2.y;
+	len = sqrtf(len);
+	v2.x /= len;
+	v2.y /= len;
+	return v2;
+}
 
 std::vector<std::string> splitStr(std::string& s, char splitChar) {
 	std::vector<std::string> res;
@@ -169,7 +254,7 @@ std::vector<std::string> splitStr(std::string& s, char splitChar) {
 }
 
 
-bool loadObjFile(std::string filePath,Mesh& mesh,LoadType loadType) {
+bool loadObjFile(std::string filePath,Mesh& mesh) {
 	if (filePath.substr(filePath.size() - 4, 4) != ".obj")
 		return false;
 
@@ -206,68 +291,16 @@ bool loadObjFile(std::string filePath,Mesh& mesh,LoadType loadType) {
 			else if (str[0] == 'f') {
 				std::vector<std::string> strs;
 				strs = splitStr(str);
-				switch (loadType) {
-					case LoadType::Trangle:
-					{
-						if (strs.size() == 4) {
-							posIndices.emplace_back(std::stoi(splitStr(strs[1], '/')[0]) - 1);
-							posIndices.emplace_back(std::stoi(splitStr(strs[2], '/')[0]) - 1);
-							posIndices.emplace_back(std::stoi(splitStr(strs[3], '/')[0]) - 1);
-
-							if (!tCoords.empty()) {
-								texIndices.emplace_back(std::stoi(splitStr(strs[1], '/')[1]) - 1);
-								texIndices.emplace_back(std::stoi(splitStr(strs[2], '/')[1]) - 1);
-								texIndices.emplace_back(std::stoi(splitStr(strs[3], '/')[1]) - 1);
-							}
-							if (!tCoords.empty() && !normals.empty()) {
-								norIndices.emplace_back(std::stoi(splitStr(strs[1], '/')[2]) - 1);
-								norIndices.emplace_back(std::stoi(splitStr(strs[2], '/')[2]) - 1);
-								norIndices.emplace_back(std::stoi(splitStr(strs[3], '/')[2]) - 1);
-							}
-							facePointNums.emplace_back(3);
-						}
-						else if (strs.size() > 4) {
-							for (int i = 0; i < strs.size() - 1 - 2; i++) {
-								posIndices.emplace_back(std::stoi(splitStr(strs[1], '/')[0]) - 1);
-								posIndices.emplace_back(std::stoi(splitStr(strs[2+i], '/')[0]) - 1);
-								posIndices.emplace_back(std::stoi(splitStr(strs[3+i], '/')[0]) - 1);
-
-								if (!tCoords.empty()) {
-									texIndices.emplace_back(std::stoi(splitStr(strs[1], '/')[1]) - 1);
-									texIndices.emplace_back(std::stoi(splitStr(strs[2+i], '/')[1]) - 1);
-									texIndices.emplace_back(std::stoi(splitStr(strs[3+i], '/')[1]) - 1);
-								}
-								if (!tCoords.empty() && !normals.empty()) {
-									norIndices.emplace_back(std::stoi(splitStr(strs[1], '/')[2]) - 1);
-									norIndices.emplace_back(std::stoi(splitStr(strs[2+i], '/')[2]) - 1);
-									norIndices.emplace_back(std::stoi(splitStr(strs[3+i], '/')[2]) - 1);
-								}
-								facePointNums.emplace_back(3);
-							}
-						}
-					}break;
-					case LoadType::General:
-					{
-						// 
-						for (int i = 0; i < strs.size() - 1; i++) {
-							posIndices.emplace_back(std::stoi(splitStr(strs[1 + i], '/')[0]) - 1);
-							//posIndices.emplace_back(std::stoi(splitStr(strs[2 + i], '/')[0]) - 1);
-							//posIndices.emplace_back(std::stoi(splitStr(strs[3 + i], '/')[0]) - 1);
-
-							if (!tCoords.empty()) {
-								texIndices.emplace_back(std::stoi(splitStr(strs[1+i], '/')[1]) - 1);
-								//texIndices.emplace_back(std::stoi(splitStr(strs[2 + i], '/')[1]) - 1);
-								//texIndices.emplace_back(std::stoi(splitStr(strs[3 + i], '/')[1]) - 1);
-							}
-							if (!tCoords.empty() && !normals.empty()) {
-								norIndices.emplace_back(std::stoi(splitStr(strs[1+i], '/')[2]) - 1);
-								//norIndices.emplace_back(std::stoi(splitStr(strs[2 + i], '/')[2]) - 1);
-								//norIndices.emplace_back(std::stoi(splitStr(strs[3 + i], '/')[2]) - 1);
-							}
-						}
-						facePointNums.emplace_back(strs.size()-1);
-					}break;
+				for (int i = 0; i < strs.size() - 1; i++) {
+					posIndices.emplace_back(std::stoi(splitStr(strs[1 + i], '/')[0]) - 1);
+					if (!tCoords.empty()) {
+						texIndices.emplace_back(std::stoi(splitStr(strs[1 + i], '/')[1]) - 1);
+					}
+					if (!tCoords.empty() && !normals.empty()) {
+						norIndices.emplace_back(std::stoi(splitStr(strs[1 + i], '/')[2]) - 1);
+					}
 				}
+				facePointNums.emplace_back(strs.size() - 1);
 			}
 		}
 		mesh = std::move(Mesh(positions, tCoords, normals,facePointNums, posIndices, texIndices, norIndices));
@@ -326,15 +359,17 @@ bool saveObjFile(Mesh& mesh,std::string filePath) {
 			}
 			file << "\n";
 		}
+		file.close();
 	}
 	catch (std::exception e) {
 		std::cout<<e.what();
+		file.close();
 		return false;
 	}
 	return true;
 }
 
-bool MeshSubdivision(Mesh& mesh,std::string filePath,SubFunction subFunction) {
+bool MeshSubdivision(Mesh& mesh,SubFunction subFunction) {
 	int oldPointNum = mesh.positions.size();
 	std::vector<std::unordered_set<unsigned int>> sides(oldPointNum);
 	for (int i = 0,offset=0; i < mesh.posIndices.size()&&offset<mesh.facePointNums.size(); i+=mesh.facePointNums[offset],offset++) {
@@ -346,6 +381,9 @@ bool MeshSubdivision(Mesh& mesh,std::string filePath,SubFunction subFunction) {
 	switch (subFunction) {
 		case SubFunction::Loop_Subdivision:
 		{
+			if (!mesh.isTriangulated()) {
+				return false;
+			}
 			creatNewVertices_LoopSubdivision(sides, mesh);
 			adjustOldVertices_LoopSubdivision(oldPointNum, mesh);
 
@@ -357,16 +395,50 @@ bool MeshSubdivision(Mesh& mesh,std::string filePath,SubFunction subFunction) {
 		}break;
 	}
 		
-	return saveObjFile(mesh,filePath);
+	return true;
 }
 
 void creatNewVertices_LoopSubdivision(std::vector<std::unordered_set<unsigned int>> sides,Mesh& mesh) {
 	std::vector<unsigned int> newPosIndices;
-	std::vector<std::unordered_map<unsigned int ,unsigned int>> midPointInices(sides.size());
+	std::vector<std::unordered_map<unsigned int ,unsigned int>> midPosInices(sides.size());
+	//std::vector<std::unordered_map<unsigned int, unsigned int>> midTexInices;
+	//std::vector<std::unordered_map<unsigned int, unsigned int>> midNorInices;
+	//if (mesh.hasTextureCoords()) {
+	//	std::vector<std::unordered_map<unsigned int, unsigned int>> temp(sides.size());
+	//	midTexInices= move(temp);
+	//}
+	//if (mesh.hasNormals()) {
+	//	std::vector<std::unordered_map<unsigned int, unsigned int>> temp(sides.size());
+	//	midNorInices = move(temp);
+	//}
+
+//#pragma region two function to find the index of vector<Vector3f || Vector2f>
+//	std::function<int( std::vector<Vector3f>&,  Vector3f&)> findVector3fIndex = []( std::vector<Vector3f>& list,  Vector3f& v3) {
+//		for (int i = 0; i < list.size(); i++) {
+//			if (list[i] == v3) {
+//				return i;
+//			}
+//		}
+//		return -1;
+//	};
+//
+//	std::function<int(std::vector<Vector2f>&, Vector2f&)> findVector2fIndex = [](std::vector<Vector2f>& list, Vector2f& v2) {
+//		for (int i = 0; i < list.size(); i++) {
+//			if (list[i] == v2) {
+//				return i;
+//			}
+//		}
+//		return -1;
+//	};
+//#pragma endregion
+
+
 	for (int i = 0; i < sides.size(); i++) {
 		for (auto j : sides[i]) {
 			if (i<j) {
-				unsigned int index0, index1;
+				unsigned int posIndex0, posIndex1;
+				//unsigned int texIndex0, texIndex1;
+				//unsigned int norIndex0, norIndex1;
 				int pCount = 0;
 				for (int k = 0; k < mesh.posIndices.size() && pCount<2; k += 3) {
 					unsigned int p0 = mesh.posIndices[k + 0];
@@ -374,19 +446,19 @@ void creatNewVertices_LoopSubdivision(std::vector<std::unordered_set<unsigned in
 					unsigned int p2 = mesh.posIndices[k + 2];
 					if ((i == p0 || i == p1 || i == p2) && (j == p0 || j == p1 || j == p2)) {
 						if (pCount == 0) {
-							index0 = p0 + p1 + p2 - i - j;
+							posIndex0 = p0 + p1 + p2 - i - j;
 						}
 						else {
-							index1 = p0 + p1 + p2 - i - j;
+							posIndex1 = p0 + p1 + p2 - i - j;
 						}
 						pCount++;
 					}
 				}
 				if (pCount == 2) {
 					Vector3f newPoint = mesh.positions[i] * 3.0f / 8.0f + mesh.positions[j] * 3.0f / 8.0f
-						+ mesh.positions[index0] / 8.0f + mesh.positions[index1] / 8.0f;
+						+ mesh.positions[posIndex0] / 8.0f + mesh.positions[posIndex1] / 8.0f;
 					mesh.positions.emplace_back(newPoint);
-					midPointInices[i].insert({j,mesh.positions.size()-1});
+					midPosInices[i].insert({j,mesh.positions.size()-1});
 				}
 			}
 		}
@@ -395,9 +467,9 @@ void creatNewVertices_LoopSubdivision(std::vector<std::unordered_set<unsigned in
 		unsigned int i0 = mesh.posIndices[i + 0];
 		unsigned int i1 = mesh.posIndices[i + 1];
 		unsigned int i2 = mesh.posIndices[i + 2];
-		unsigned int i3 = midPointInices[i0 < i1 ? i0 : i1][i1 > i0 ? i1 : i0];
-		unsigned int i4 = midPointInices[i1 < i2 ? i1 : i2][i2 > i1 ? i2 : i1];
-		unsigned int i5 = midPointInices[i0 < i2 ? i0 : i2][i2 > i0 ? i2 : i0];
+		unsigned int i3 = midPosInices[i0 < i1 ? i0 : i1][i1 > i0 ? i1 : i0];
+		unsigned int i4 = midPosInices[i1 < i2 ? i1 : i2][i2 > i1 ? i2 : i1];
+		unsigned int i5 = midPosInices[i0 < i2 ? i0 : i2][i2 > i0 ? i2 : i0];
 
 		newPosIndices.emplace_back(i0);
 		newPosIndices.emplace_back(i3);
@@ -457,7 +529,7 @@ void adjustOldVertices_LoopSubdivision(int oldPointNum, Mesh& mesh) {
 
 void creatNewVertices_Catmull_ClarkSubdivision(std::vector<std::unordered_set<unsigned int>> sides, Mesh& mesh) {
 	std::vector<unsigned int> newPosIndices;
-	std::vector<std::unordered_map<unsigned int, unsigned int>> midPointInices(sides.size());
+	std::vector<std::unordered_map<unsigned int, unsigned int>> midPosInices(sides.size());
 	for (int i = 0; i < sides.size(); i++) {
 		for (auto j : sides[i]) {
 			if (i < j) {
@@ -495,7 +567,7 @@ void creatNewVertices_Catmull_ClarkSubdivision(std::vector<std::unordered_set<un
 					Vector3f newPoint = mesh.positions[i] / 4.0f + mesh.positions[j] / 4.0f
 						+ center1 / 4.0f + center2 / 4.0f;
 					mesh.positions.emplace_back(newPoint);
-					midPointInices[i].insert({ j,mesh.positions.size() - 1 });
+					midPosInices[i].insert({ j,mesh.positions.size() - 1 });
 				}
 			}
 		}
@@ -513,9 +585,9 @@ void creatNewVertices_Catmull_ClarkSubdivision(std::vector<std::unordered_set<un
 			unsigned int right = mesh.posIndices[i + (j + 1) % mesh.facePointNums[offset]];
 			unsigned int left = mesh.posIndices[i + (j + mesh.facePointNums[offset] - 1) % mesh.facePointNums[offset]];
 			newPosIndices.emplace_back(mid);
-			newPosIndices.emplace_back(midPointInices[mid < right ? mid : right][right > mid ? right : mid]);
+			newPosIndices.emplace_back(midPosInices[mid < right ? mid : right][right > mid ? right : mid]);
 			newPosIndices.emplace_back(centerIndex);
-			newPosIndices.emplace_back(midPointInices[mid < left ? mid : left][left > mid ? left : mid]);
+			newPosIndices.emplace_back(midPosInices[mid < left ? mid : left][left > mid ? left : mid]);
 		}
 	}
 	std::vector<unsigned int> newFacePointNums(newPosIndices.size() / 4, 4);

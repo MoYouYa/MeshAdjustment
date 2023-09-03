@@ -15,9 +15,12 @@ void main() {
 	//MeshSubdivision(mesh, "RecCube_Catmull_Clark_Subdivision_4.obj", SubFunction::Catmull_Clark_Subdivision);
 	//MeshSubdivision(mesh, "spot_triangulated.obj");
 	//MeshSubdivision(mesh, "spot_triangulated.obj");
-	loadObjFile("models/spot/spot_control_mesh.obj", mesh, LoadType::General);
-	MeshSubdivision(mesh, "spot_control_mesh_Catmull_Clark_Subdivision_1.obj", SubFunction::Catmull_Clark_Subdivision);
-	MeshSubdivision(mesh, "spot_control_mesh_Catmull_Clark_Subdivision_2.obj", SubFunction::Catmull_Clark_Subdivision);
-	MeshSubdivision(mesh, "spot_control_mesh_Catmull_Clark_Subdivision_3.obj", SubFunction::Catmull_Clark_Subdivision);
+	loadObjFile("models/spot/spot_triangulated.obj", mesh);
+	//MeshSubdivision(mesh,SubFunction::Catmull_Clark_Subdivision);
+	//saveObjFile(mesh, "spot_control_mesh_Catmull_Clark_Subdivision_1.obj");
+	//MeshSubdivision(mesh,  SubFunction::Catmull_Clark_Subdivision);
+	//saveObjFile(mesh, "spot_control_mesh_Catmull_Clark_Subdivision_2.obj");
+	//MeshSubdivision(mesh, SubFunction::Catmull_Clark_Subdivision);
+	//saveObjFile(mesh, "spot_control_mesh_Catmull_Clark_Subdivision_3.obj");
 	return;
 }
