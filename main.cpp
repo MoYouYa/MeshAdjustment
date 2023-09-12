@@ -18,7 +18,7 @@ void main() {
 	//loadObjFile("models/spot/spot_triangulated.obj", mesh);
 	MeshSubdivision(mesh,SubFunction::Catmull_Clark_Subdivision);
 	//mesh.triangulateFace();
-	mesh.resetNormals();
+	//mesh.resetNormals();
 	saveObjFile(mesh, "RecCube_Catmull_Clark_Subdivision_1_ResetNormals.obj");
 	//MeshSubdivision(mesh,  SubFunction::Catmull_Clark_Subdivision);
 	//saveObjFile(mesh, "spot_control_mesh_Catmull_Clark_Subdivision_2.obj");
