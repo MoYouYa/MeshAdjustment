@@ -147,65 +147,22 @@ public:
 		norIndices = _norIndices;
 	}
 
-	inline bool hasTextureCoords() { return texIndices.size() > 0; }
+	bool hasTextureCoords() { return texIndices.size() > 0; }
 
-	inline bool hasNormals() { return norIndices.size() > 0; }
+	bool hasNormals() { return norIndices.size() > 0; }
 
-	bool isTriangulated() {
-		for (int i = 0; i < facePointNums.size(); i++) {
-			if (facePointNums[i] != 3) {
-				return false;
-			}
-		}
-		return true;
-	}
+	bool isTriangulated();
 
-	void triangulateFace() {
-		if (!isTriangulated()) {
-			std::vector<unsigned int> newFacePointNums;
-			std::vector<unsigned int> newPosIndices;
-			std::vector<unsigned int> newTexIndices;
-			std::vector<unsigned int> newNorIndices;
-			for (int i = 0, j = 0; i < facePointNums.size(); i++) {
-				if (facePointNums[i] == 3) {
-					newPosIndices.emplace_back(posIndices[j]);
-					newTexIndices.emplace_back(texIndices[j]);
-					newNorIndices.emplace_back(norIndices[j]);
-					newPosIndices.emplace_back(posIndices[j+1]);
-					newTexIndices.emplace_back(texIndices[j+1]);
-					newNorIndices.emplace_back(norIndices[j+1]);
-					newPosIndices.emplace_back(posIndices[j+2]);
-					newTexIndices.emplace_back(texIndices[j+2]);
-					newNorIndices.emplace_back(norIndices[j+2]);
-					newFacePointNums.emplace_back(3);
-					j += 3;
-				}
-				else {
-					for (int k = 0; k+2 < facePointNums[i]; k++) {
-						newPosIndices.emplace_back(posIndices[j+k]);
-						newTexIndices.emplace_back(texIndices[j+k]);
-						newNorIndices.emplace_back(norIndices[j+k]);
-						newPosIndices.emplace_back(posIndices[j + k+1]);
-						newTexIndices.emplace_back(texIndices[j + k+1]);
-						newNorIndices.emplace_back(norIndices[j + k+1]);
-						newPosIndices.emplace_back(posIndices[j + k+2]);
-						newTexIndices.emplace_back(texIndices[j + k+2]);
-						newNorIndices.emplace_back(norIndices[j + k+2]);
-						newFacePointNums.emplace_back(3);
-					}
-					j += facePointNums[i];
-				}
-			}
-			facePointNums = move(newFacePointNums);
-			posIndices = move(newPosIndices);
-			texIndices = move(newTexIndices);
-			norIndices = move(newNorIndices);
-		}
-	}
+	//trangulate the mesh ,but it is not correct
+	void triangulateFace();
+
+	void resetNormals();
 };
 
 Vector3f& normalizeVector(Vector3f& v3);
 Vector2f& normalizeVector(Vector2f& v2);
+Vector3f cross(Vector3f v0, Vector3f v1);
+float dot(Vector3f v0, Vector3f v1);
 std::vector<std::string> splitStr(std::string& s, char splitChar=' ');
 bool loadObjFile(std::string filePath,Mesh& mesh);
 bool saveObjFile(Mesh& mesh, std::string filePath);
@@ -214,6 +171,114 @@ void creatNewVertices_LoopSubdivision(std::vector<std::unordered_set<unsigned in
 void adjustOldVertices_LoopSubdivision(int oldPointNum, Mesh& mesh);
 void creatNewVertices_Catmull_ClarkSubdivision(std::vector<std::unordered_set<unsigned int>> sides, Mesh& mesh);
 void adjustOldVertices_Catmull_ClarkSubdivision(int oldPointNum, Mesh& mesh);
+
+#pragma region  Function implementation
+
+bool Mesh::isTriangulated() {
+	for (int i = 0; i < facePointNums.size(); i++) {
+		if (facePointNums[i] != 3) {
+			return false;
+		}
+	}
+	return true;
+}
+void Mesh::triangulateFace() {
+	if (!isTriangulated()) {
+		std::vector<unsigned int> newFacePointNums;
+		std::vector<unsigned int> newPosIndices;
+		std::vector<unsigned int> newTexIndices;
+		std::vector<unsigned int> newNorIndices;
+		for (int i = 0, j = 0; i < facePointNums.size(); i++) {
+			if (facePointNums[i] == 3) {
+				newPosIndices.emplace_back(posIndices[j]);
+				newPosIndices.emplace_back(posIndices[j + 1]);
+				newPosIndices.emplace_back(posIndices[j + 2]);
+				if (!texIndices.empty()) {
+					newTexIndices.emplace_back(texIndices[j]);
+					newTexIndices.emplace_back(texIndices[j + 1]);
+					newTexIndices.emplace_back(texIndices[j + 2]);
+				}
+				if (!norIndices.empty()) {
+					newNorIndices.emplace_back(norIndices[j]);
+					newNorIndices.emplace_back(norIndices[j + 1]);
+					newNorIndices.emplace_back(norIndices[j + 2]);
+				}
+				newFacePointNums.emplace_back(3);
+				j += 3;
+			}
+			else {
+				for (int k = 0; k + 2 < facePointNums[i]; k++) {
+					newPosIndices.emplace_back(posIndices[j + k]);
+					newPosIndices.emplace_back(posIndices[j + k + 1]);
+					newPosIndices.emplace_back(posIndices[j + k + 2]);
+					if (!texIndices.empty()) {
+						newTexIndices.emplace_back(texIndices[j + k]);
+						newTexIndices.emplace_back(texIndices[j + k + 1]);
+						newTexIndices.emplace_back(texIndices[j + k + 2]);
+					}
+					if (!norIndices.empty()) {
+						newNorIndices.emplace_back(norIndices[j + k]);
+						newNorIndices.emplace_back(norIndices[j + k + 1]);
+						newNorIndices.emplace_back(norIndices[j + k + 2]);
+					}
+					newFacePointNums.emplace_back(3);
+				}
+				j += facePointNums[i];
+			}
+		}
+		facePointNums = move(newFacePointNums);
+		posIndices = move(newPosIndices);
+		texIndices = move(newTexIndices);
+		norIndices = move(newNorIndices);
+	}
+}
+void Mesh::resetNormals() {
+	std::vector<Vector3f> newNormals;
+	std::vector<unsigned int> newNorIndices(positions.size());
+	std::vector<std::set<int>> sides(positions.size());
+	for (int i = 0, offset = 0; i < posIndices.size(); i += facePointNums[offset], offset++) {
+		for (int j = 0; j < facePointNums[offset]; j++) {
+			sides[posIndices[i + j]].insert(posIndices[i + (j + 1) % facePointNums[offset]]);
+			sides[posIndices[i + (j + 1) % facePointNums[offset]]].insert(posIndices[i + j]);
+		}
+	}
+
+	std::function<float(Vector3f&, Vector3f&)> getArea = [](Vector3f& v1, Vector3f& v2) {
+		Vector3f v = cross(v1, v2);
+		return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+	};
+
+	std::function<int(std::vector<Vector3f>&, Vector3f&)> addNormal = [](std::vector<Vector3f>& list, Vector3f& normal) {
+		for (int i = 0; i < list.size(); i++) {
+			if (list[i] == normal)return -1;
+		}
+		list.emplace_back(normal);
+		return int(list.size() - 1);
+	};
+	for (int i = 0; i < positions.size(); i++) {
+		std::vector<Vector3f> vecs;
+		std::vector<Vector3f> nors;
+		std::vector<float> areas;
+		float sum = 0;
+		Vector3f res;
+		for (auto j : sides[i]) {
+			vecs.emplace_back(Vector3f(positions[j] - positions[i]));
+		}
+		for (int k = 0; k < vecs.size(); k++) {
+			nors.emplace_back(cross(vecs[k % vecs.size()], vecs[(k + 1) % vecs.size()]));
+			areas.emplace_back(getArea(vecs[k % vecs.size()], vecs[(k + 1) % vecs.size()]));
+			sum += areas.back();
+		}
+		for (int z = 0; z < nors.size(); z++) {
+			res += nors[z] * (areas[z] / sum);
+		}
+		normalizeVector(res);
+		newNorIndices[i] = addNormal(newNormals, res);
+		
+	}
+	normals = move(newNormals);
+	norIndices = move(newNorIndices);
+}
 
 Vector3f& normalizeVector(Vector3f& v3) {
 	float len = v3.x * v3.x + v3.y * v3.y + v3.z * v3.z;
@@ -230,6 +295,14 @@ Vector2f& normalizeVector(Vector2f& v2) {
 	v2.x /= len;
 	v2.y /= len;
 	return v2;
+}
+
+Vector3f cross(Vector3f v0, Vector3f v1) {
+	return Vector3f(v0.y * v1.z - v0.z * v1.y, v0.z * v1.x - v1.z * v0.x, v0.x * v1.y - v0.y * v1.x);
+}
+
+float dot(Vector3f v0, Vector3f v1) {
+	return v0.x * v1.x + v0.y * v1.y + v0.z * v1.z;
 }
 
 std::vector<std::string> splitStr(std::string& s, char splitChar) {
@@ -331,11 +404,11 @@ bool saveObjFile(Mesh& mesh,std::string filePath) {
 		//		file << "vt " << mesh.textureCoordinates[i].x << " " << mesh.textureCoordinates[i].y << "\n";
 		//	}
 		//}
-		//if (!mesh.normals.empty()) {
-		//	for (int i = 0; i < mesh.normals.size(); i++) {
-		//		file << "vn " << mesh.normals[i].x << " " << mesh.normals[i].y << " " << mesh.normals[i].z << "\n";
-		//	}
-		//}
+		if (!mesh.normals.empty()) {
+			for (int i = 0; i < mesh.normals.size(); i++) {
+				file << "vn " << mesh.normals[i].x << " " << mesh.normals[i].y << " " << mesh.normals[i].z << "\n";
+			}
+		}
 		unsigned int offset = 0;
 		for (int i = 0; i < mesh.posIndices.size()&&offset<mesh.facePointNums.size(); i+=mesh.facePointNums[offset],offset++){
 			//if (!mesh.textureCoordinates.empty() && !mesh.normals.empty()) {
@@ -633,3 +706,5 @@ void adjustOldVertices_Catmull_ClarkSubdivision(int oldPointNum, Mesh& mesh) {
 		}
 	}
 }
+
+#pragma endregion
